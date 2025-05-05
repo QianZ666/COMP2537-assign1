@@ -52,11 +52,6 @@ app.use(
 
 // home page route
 app.get("/", (req, res) => {
-  // console.log(req.session.authenticated);
-  // if (req.session.authenticated) {
-  //   console.log("当前用户是：", req.session.username);
-  // }
-
     if (req.session.username) {
       var html = `
         Hello, ${req.session.username}!
@@ -225,11 +220,35 @@ app.post("/submitUser", async (req, res) => {
     return;
   }
 
-  const hashedPassword = await bcrypt.hash(password, saltRounds);
+  try {
+    const existingUser = await userCollection.findOne({ 
+      $or: [{ username }, { email }]
+    });
+    
+    if (existingUser) {
+      let query = [];
+      if (existingUser.username === username) query.push("usernameExists=true");
+      if (existingUser.email === email) query.push("emailExists=true");
+      return res.redirect("/signup?" + query.join("&"));
+    }
 
-  await userCollection.insertOne({ username, email, password: hashedPassword });
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-  res.send("Successfully created user");
+    await userCollection.insertOne({ 
+      username, 
+      email, 
+      password: hashedPassword,
+      createdAt: new Date()
+    });
+    req.session.authenticated = true;
+    req.session.username = username;
+    req.session.email = email;
+    return res.redirect("/members");
+    
+  } catch (err) {
+    console.error("Registration error:", err);
+    return res.redirect("/signup?error=registration_failed");
+  }
 });
 
 app.post("/loggingin", async (req, res) => {
@@ -276,3 +295,4 @@ app.get("*", (req, res) => {
 app.listen(port, () => {
   console.log("Node application listening on port " + port);
 });
+
